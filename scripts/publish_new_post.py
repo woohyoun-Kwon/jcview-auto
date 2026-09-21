@@ -65,17 +65,18 @@ def write_last_published(link):
         f.write(link)
 
 
-def build_thread_text(title, link):
-    """스레드에 올릴 문구를 만든다. (지금은 단순 규칙 기반)"""
-    return f"{title}\n\n{link}"
+def build_thread_text(title):
+    """본문에는 링크 없이 제목(문구)만 올린다. 링크는 댓글로 따로 단다."""
+    return title
 
 
-def create_container(user_id, text, access_token):
+def create_container(user_id, text, access_token, reply_to_id=None):
     import urllib.parse
 
-    data = urllib.parse.urlencode(
-        {"media_type": "TEXT", "text": text, "access_token": access_token}
-    ).encode()
+    params = {"media_type": "TEXT", "text": text, "access_token": access_token}
+    if reply_to_id:
+        params["reply_to_id"] = reply_to_id
+    data = urllib.parse.urlencode(params).encode()
     req = urllib.request.Request(
         f"https://graph.threads.net/v1.0/{user_id}/threads", data=data, method="POST"
     )
@@ -127,15 +128,24 @@ def main():
         return
 
     print("[진행] 새 글 발견 -> 스레드 발행을 시작합니다.")
-    text = build_thread_text(title, link)
+    text = build_thread_text(title)
 
     user_id = get_user_id(access_token)
-    creation_id = create_container(user_id, text, access_token)
-    print(f"[진행] 컨테이너 생성 완료 (id={creation_id}) -> 30초 대기")
-    time.sleep(30)
 
-    result = publish_container(user_id, creation_id, access_token)
-    print(f"[완료] 발행 성공: {result}")
+    # 1) 본문(링크 없이 제목만) 발행
+    creation_id = create_container(user_id, text, access_token)
+    print(f"[진행] 본문 컨테이너 생성 완료 (id={creation_id}) -> 30초 대기")
+    time.sleep(30)
+    main_result = publish_container(user_id, creation_id, access_token)
+    main_post_id = main_result["id"]
+    print(f"[완료] 본문 발행 성공: {main_result}")
+
+    # 2) 링크를 댓글(답글)로 발행
+    reply_creation_id = create_container(user_id, link, access_token, reply_to_id=main_post_id)
+    print(f"[진행] 댓글(링크) 컨테이너 생성 완료 (id={reply_creation_id}) -> 30초 대기")
+    time.sleep(30)
+    reply_result = publish_container(user_id, reply_creation_id, access_token)
+    print(f"[완료] 댓글(링크) 발행 성공: {reply_result}")
 
     write_last_published(link)
     print("[완료] 상태 파일 갱신 완료.")
