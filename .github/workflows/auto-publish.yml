@@ -1,0 +1,41 @@
+name: 티스토리 새 글 자동 발행 (스레드)
+
+on:
+  # 매시 정각마다 자동 실행 (UTC 기준이라 한국 시간과는 상관없이 1시간마다 돕니다)
+  schedule:
+    - cron: "0 * * * *"
+  # 필요할 때 수동으로도 실행 가능
+  workflow_dispatch:
+
+permissions:
+  contents: write # 상태 파일(state/last_published.txt)을 커밋하기 위해 필요
+
+jobs:
+  check-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: RSS 확인 및 발행
+        env:
+          RSS_URL: "https://jcview.com/rss"
+          THREADS_LONG_TOKEN: ${{ secrets.THREADS_LONG_TOKEN }}
+        run: python scripts/publish_new_post.py
+
+      - name: 상태 파일 변경사항 커밋
+        run: |
+          git config user.name "jcview-auto-bot"
+          git config user.email "actions@users.noreply.github.com"
+          if [ -n "$(git status --porcelain state/last_published.txt)" ]; then
+            git add state/last_published.txt
+            git commit -m "chore: 마지막 발행 글 갱신 [skip ci]"
+            git push
+          else
+            echo "변경사항 없음 (새 글이 없었음)"
+          fi
