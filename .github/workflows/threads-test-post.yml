@@ -1,0 +1,44 @@
+name: Threads 테스트 발행
+
+# 수동으로 실행하는 워크플로우입니다.
+# GitHub 저장소 > Actions 탭 > "Threads 테스트 발행" > "Run workflow" 버튼으로 실행합니다.
+on:
+  workflow_dispatch:
+    inputs:
+      test_text:
+        description: "스레드에 올릴 테스트 문구"
+        required: true
+        default: "자동화 테스트입니다 🙂"
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 내 Threads 사용자 ID 확인
+        id: whoami
+        run: |
+          RESPONSE=$(curl -s "https://graph.threads.net/v1.0/me?fields=id,username&access_token=${{ secrets.THREADS_LONG_TOKEN }}")
+          echo "응답: $RESPONSE"
+          USER_ID=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+          echo "user_id=$USER_ID" >> "$GITHUB_OUTPUT"
+
+      - name: 1단계 - 컨테이너 생성
+        id: container
+        run: |
+          RESPONSE=$(curl -s -X POST "https://graph.threads.net/v1.0/${{ steps.whoami.outputs.user_id }}/threads" \
+            -d "media_type=TEXT" \
+            -d "text=${{ inputs.test_text }}" \
+            -d "access_token=${{ secrets.THREADS_LONG_TOKEN }}")
+          echo "응답: $RESPONSE"
+          CREATION_ID=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+          echo "creation_id=$CREATION_ID" >> "$GITHUB_OUTPUT"
+
+      - name: 잠시 대기 (서버 처리 시간)
+        run: sleep 30
+
+      - name: 2단계 - 실제 발행
+        run: |
+          RESPONSE=$(curl -s -X POST "https://graph.threads.net/v1.0/${{ steps.whoami.outputs.user_id }}/threads_publish" \
+            -d "creation_id=${{ steps.container.outputs.creation_id }}" \
+            -d "access_token=${{ secrets.THREADS_LONG_TOKEN }}")
+          echo "발행 결과: $RESPONSE"
