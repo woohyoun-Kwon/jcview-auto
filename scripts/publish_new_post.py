@@ -106,12 +106,36 @@ def publish_container(user_id, creation_id, access_token):
 
 def get_user_id(access_token):
     import json
+    import urllib.parse
+    import urllib.error
 
-    url = f"https://graph.threads.net/v1.0/me?fields=id,username&access_token={access_token}"
-    req = urllib.request.Request(url)
-    with urllib.request.urlopen(req, timeout=20) as response:
-        result = json.loads(response.read())
-        return result["id"]
+    query = urllib.parse.urlencode({
+        "fields": "id,username",
+        "access_token": access_token,
+    })
+    req = urllib.request.Request(
+        f"https://graph.threads.net/v1.0/me?{query}"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            result = json.loads(response.read())
+            return result["id"]
+
+    except urllib.error.HTTPError as error:
+        raw = error.read().decode("utf-8", errors="replace")
+        try:
+            detail = json.loads(raw).get("error", {})
+        except (ValueError, AttributeError):
+            detail = {}
+
+        print(f"[Threads 오류] HTTP {error.code}")
+        for key in ("message", "type", "code", "error_subcode"):
+            value = str(detail.get(key, "확인 불가"))
+            value = value.replace(access_token, "[토큰 숨김]")
+            print(f"{key}: {value}")
+
+        sys.exit(1)
 
 
 def main():
